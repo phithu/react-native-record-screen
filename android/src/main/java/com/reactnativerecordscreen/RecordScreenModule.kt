@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.media.MediaCodecInfo
+import android.media.MediaCodecList
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.util.SparseIntArray
@@ -86,11 +88,31 @@ class RecordScreenModule(reactContext: ReactApplicationContext) : ReactContextBa
     currentActivity!!.startActivityForResult(permissionIntent, SCREEN_RECORD_REQUEST_CODE);
   }
 
+  private fun doesSupportEncoder(encoder: String): Boolean {
+    val numCodecs: Int = MediaCodecList.getCodecCount()
+    for (i in 0 until numCodecs) {
+      val codecInfo: MediaCodecInfo = MediaCodecList.getCodecInfoAt(i)
+      if (codecInfo.isEncoder()) {
+        if (codecInfo.getName() != null) {
+          if (codecInfo.getName().contains(encoder)) {
+            return true
+          }
+        }
+      }
+    }
+    return false
+  }
+
 
   @ReactMethod
   fun startRecording(promise: Promise) {
     startPromise = promise;
     try {
+      if(doesSupportEncoder("h264")){
+        hbRecorder!!.setVideoEncoder("H264");
+      } else{
+        hbRecorder!!.setVideoEncoder("DEFAULT");
+      }
       startRecordingScreen();
       println("startRecording");
     } catch (e: IllegalStateException) {
@@ -125,7 +147,7 @@ class RecordScreenModule(reactContext: ReactApplicationContext) : ReactContextBa
     var uri = hbRecorder!!.filePath;
     val response = WritableNativeMap();
     val result =  WritableNativeMap();
-    result.putString("outputURL", uri);
+    result.putString("videoUrl", uri);
     response.putString("status", "success");
     response.putMap("result", result);
     stopPromise!!.resolve(response);
