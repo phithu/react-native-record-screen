@@ -54,6 +54,7 @@ RCT_REMAP_METHOD(startRecording, resolve:(RCTPromiseResolveBlock)resolve rejecte
     
     AudioChannelLayout acl = { 0 };
     acl.mChannelLayoutTag = kAudioChannelLayoutTag_Mono;
+    ;
     self.audioInput = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeAudio outputSettings:@{ AVFormatIDKey: @(kAudioFormatMPEG4AAC), AVSampleRateKey: @(44100),  AVChannelLayoutKey: [NSData dataWithBytes: &acl length: sizeof( acl ) ], AVEncoderBitRateKey: @(64000)}];
     self.micInput = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeAudio outputSettings:@{ AVFormatIDKey: @(kAudioFormatMPEG4AAC), AVSampleRateKey: @(44100),  AVChannelLayoutKey: [NSData dataWithBytes: &acl length: sizeof( acl ) ], AVEncoderBitRateKey: @(64000)}];
     
@@ -70,8 +71,6 @@ RCT_REMAP_METHOD(startRecording, resolve:(RCTPromiseResolveBlock)resolve rejecte
                                         AVVideoHeightKey                : @(self.screenHeight)};
         
         self.videoInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
-    } else {
-        // Fallback on earlier versions
     }
     
     [self.writer addInput:self.audioInput];
@@ -88,17 +87,23 @@ RCT_REMAP_METHOD(startRecording, resolve:(RCTPromiseResolveBlock)resolve rejecte
             if (granted) {
                 [self.screenRecorder startCaptureWithHandler:^(CMSampleBufferRef sampleBuffer, RPSampleBufferType bufferType, NSError* error) {
                     if (CMSampleBufferDataIsReady(sampleBuffer)) {
-                        if (self.writer.status == AVAssetWriterStatusUnknown && !self.encounteredFirstBuffer) {
-                            self.encounteredFirstBuffer = YES;
-                            NSLog(@"First buffer video");
+                        NSLog(@"AVAssetWriterStatusWriting! %ld", AVAssetWriterStatusWriting);
+                        if (self.writer.status == AVAssetWriterStatusUnknown && bufferType == RPSampleBufferTypeVideo) {
                             [self.writer startWriting];
                             [self.writer startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp(sampleBuffer)];
                         } else if (self.writer.status == AVAssetWriterStatusFailed) {
+                            [[RPScreenRecorder sharedRecorder] stopCaptureWithHandler:^(NSError * _Nullable error) {
+                                self.audioInput = nil;
+                                self.writer = nil;
+                                self.screenRecorder = nil;
+                            }];
+                            reject(@"error", @"An error occured", error);
+                            return;
                             
                         } else if (self.writer.status == AVAssetWriterStatusWriting) {
                             switch (bufferType) {
                                 case RPSampleBufferTypeVideo:
-                                    if (self.videoInput.isReadyForMoreMediaData) {
+                                    if(self.videoInput.isReadyForMoreMediaData) {
                                         [self.videoInput appendSampleBuffer:sampleBuffer];
                                     }
                                     break;
@@ -119,8 +124,10 @@ RCT_REMAP_METHOD(startRecording, resolve:(RCTPromiseResolveBlock)resolve rejecte
                     }
                 } completionHandler:^(NSError* error) {
                     if(error) {
-                        reject(0, @"Permission denied", error);
+                        reject(@"error", @"Recording not active", error);
                     } else {
+                        AVAudioSession *session = [AVAudioSession sharedInstance];
+                        [session setActive:YES error:nil];
                         resolve(@"started");
                     }
                 }];
@@ -145,11 +152,12 @@ RCT_REMAP_METHOD(stopRecording, resolver:(RCTPromiseResolveBlock)resolve rejecte
                 [self.videoInput markAsFinished];
                 [self.writer finishWritingWithCompletionHandler:^{
                     
+               
+                    
                     NSDictionary *result = [NSDictionary dictionaryWithObject:self.writer.outputURL.absoluteString forKey:@"videoUrl"];
+                    
                     resolve([self successResponse:result]);
                     
-                    UISaveVideoAtPathToSavedPhotosAlbum(self.writer.outputURL.absoluteString, nil, nil, nil);
-                    NSLog(@"finishWritingWithCompletionHandler: Recording stopped successfully. Cleaning up... %@", result);
                     self.audioInput = nil;
                     self.micInput = nil;
                     self.videoInput = nil;
@@ -158,6 +166,11 @@ RCT_REMAP_METHOD(stopRecording, resolver:(RCTPromiseResolveBlock)resolve rejecte
                 }];
             } else {
                 NSError* err = nil;
+                self.audioInput = nil;
+                self.micInput = nil;
+                self.videoInput = nil;
+                self.writer = nil;
+                self.screenRecorder = nil;
                 reject(0, @"Stop recording error", err);
             }
         }];
