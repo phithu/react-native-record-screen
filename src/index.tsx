@@ -1,30 +1,25 @@
-import { NativeModules, Dimensions } from 'react-native';
+import {
+  NativeModules,
+  Dimensions,
+  NativeEventEmitter,
+  Platform
+} from 'react-native';
 
-type RecordScreenCropConfigType = {
-  width: number;
-  height: number;
-  x: number;
-  y: number;
-  fps: number;
-};
 
 type RecordScreenConfigType = {
   width?: number;
   height?: number;
-  crop?: RecordScreenCropConfigType;
 };
 
 type RecordingSuccessResponse = {
-  status: 'success';
   result: {
-    outputURL: string;
+    videoUrl: string;
   };
 };
 
 type RecordingErrorResponse = {
-  status: 'error';
   result: {
-    outputURL: string;
+    videoUrl: string;
   };
 };
 
@@ -37,34 +32,43 @@ type RecordScreenType = {
   clean(): Promise<string>;
 };
 
-const { RecordScreen } = NativeModules;
+const {RecordScreen} = NativeModules;
 
 const RS = RecordScreen as RecordScreenType;
+
+const eventEmitter = Platform.OS === "ios" ? null : new NativeEventEmitter(NativeModules.RecordScreen);
 
 class ReactNativeRecordScreenClass {
   private _screenWidth = Dimensions.get('window').width;
   private _screenHeight = Dimensions.get('window').height;
+  private _eventEmitter
 
-  setup(config: RecordScreenConfigType = {}): void {
-    const conf = Object.assign(
-      {
-        audio: true,
-        width: this._screenWidth,
-        height: this._screenHeight,
-      },
-      config
-    );
-    RS.setup(conf);
+  constructor() {
+    RS.setup({
+      width: this._screenWidth,
+      height: this._screenHeight,
+    });
   }
 
-  async startRecording(config: RecordScreenConfigType = {}): Promise<void> {
-    Object.keys(config).length && this.setup(config);
+
+  public onComplete(callback) {
+    this._eventEmitter = eventEmitter.addListener("onComplete", data => {
+      console.log("callback", data)
+      callback(data)
+    })
+  }
+
+  public removeListener() {
+    this._eventEmitter && this._eventEmitter.remove()
+  }
+
+  async startRecording(): Promise<void> {
     return new Promise((resolve, reject) => {
       RS.startRecording().then(resolve).catch(reject);
     });
   }
 
-  stopRecording(): Promise<RecordingResponse> {
+  async stopRecording(): Promise<RecordingResponse> {
     return new Promise((resolve, reject) => {
       RS.stopRecording().then(resolve).catch(reject);
     });
