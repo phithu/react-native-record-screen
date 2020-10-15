@@ -12,6 +12,7 @@ import android.util.SparseIntArray
 import android.view.Surface
 import androidx.appcompat.app.AppCompatActivity
 import com.facebook.react.bridge.*
+import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import com.hbisoft.hbrecorder.HBRecorder
 import com.hbisoft.hbrecorder.HBRecorderListener
 import java.io.File
@@ -46,6 +47,14 @@ class RecordScreenModule(reactContext: ReactApplicationContext) : ReactContextBa
     return "RecordScreen"
   }
 
+  private fun sendEvent(reactContext: ReactContext,
+                        eventName: String,
+                        params: String) {
+    reactContext
+      .getJSModule(RCTDeviceEventEmitter::class.java)
+      .emit(eventName, params)
+  }
+
   private val mActivityEventListener: ActivityEventListener = object : BaseActivityEventListener() {
     override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, intent: Intent?) {
       println("resultCode")
@@ -76,7 +85,7 @@ class RecordScreenModule(reactContext: ReactApplicationContext) : ReactContextBa
     Application().onCreate()
     screenWidth = if (readableMap.hasKey("width")) ceil(readableMap.getDouble("width")).toInt() else 0;
     screenHeight = if (readableMap.hasKey("height")) ceil(readableMap.getDouble("height")).toInt() else 0;
-    crop =  if (readableMap.hasKey("crop")) readableMap.getMap("crop") else null;
+    crop = if (readableMap.hasKey("crop")) readableMap.getMap("crop") else null;
     hbRecorder = HBRecorder(reactApplicationContext, this);
     hbRecorder!!.setOutputPath(outputUri.toString());
     reactApplicationContext.addActivityEventListener(mActivityEventListener);
@@ -108,9 +117,9 @@ class RecordScreenModule(reactContext: ReactApplicationContext) : ReactContextBa
   fun startRecording(promise: Promise) {
     startPromise = promise;
     try {
-      if(doesSupportEncoder("h264")){
+      if (doesSupportEncoder("h264")) {
         hbRecorder!!.setVideoEncoder("H264");
-      } else{
+      } else {
         hbRecorder!!.setVideoEncoder("DEFAULT");
       }
       startRecordingScreen();
@@ -140,6 +149,7 @@ class RecordScreenModule(reactContext: ReactApplicationContext) : ReactContextBa
 
   override fun HBRecorderOnStart() {
     println("HBRecorderOnStart")
+
   }
 
   override fun HBRecorderOnComplete() {
@@ -150,7 +160,12 @@ class RecordScreenModule(reactContext: ReactApplicationContext) : ReactContextBa
     result.putString("videoUrl", uri);
     response.putString("status", "success");
     response.putMap("result", result);
-    stopPromise!!.resolve(response);
+    if(stopPromise == null) {
+      sendEvent(reactApplicationContext, "onComplete", uri)
+    } else {
+      stopPromise!!.resolve(response);
+    }
+    stopPromise = null;
   }
 
   override fun HBRecorderOnError(errorCode: Int, reason: String?) {
@@ -159,5 +174,6 @@ class RecordScreenModule(reactContext: ReactApplicationContext) : ReactContextBa
     println(errorCode)
     println("reason")
     println(reason)
+    sendEvent(reactApplicationContext, "onComplete", "")
   }
 }
