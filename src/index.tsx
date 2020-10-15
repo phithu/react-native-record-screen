@@ -52,14 +52,17 @@ class ReactNativeRecordScreenClass {
 
 
   public onComplete(callback) {
-    this._eventEmitter = eventEmitter.addListener("onComplete", data => {
-      console.log("callback", data)
-      callback(data)
-    })
+    if (Platform.OS === "android") {
+      this._eventEmitter = eventEmitter.addListener("onComplete", data => {
+        callback(data)
+      })
+    }
   }
 
   public removeListener() {
-    this._eventEmitter && this._eventEmitter.remove()
+    if (Platform.OS === "android" && this._eventEmitter) {
+      this._eventEmitter.remove()
+    }
   }
 
   async startRecording(): Promise<void> {
