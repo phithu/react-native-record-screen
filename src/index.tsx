@@ -52,7 +52,7 @@ class ReactNativeRecordScreenClass {
 
 
   public onComplete(callback) {
-    if (Platform.OS === "android") {
+    if (Platform.OS === "android" && eventEmitter) {
       this._eventEmitter = eventEmitter.addListener("onComplete", data => {
         callback(data)
       })
